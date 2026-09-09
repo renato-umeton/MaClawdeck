@@ -83,6 +83,21 @@ the repo and proceed.
 
 ## Small, known, not yet fixed
 
+- **WID-b (2026-09-09) — the moon chip overlaps the clock's last digit in a browser window.**
+  Observed against `?mock=normal` served by the live crabd at 1440x900 and 1680x1050 (Chromium via
+  Playwright): the quiet-hours moon chip is drawn over the final digit of the clock, which at
+  1680x1050 reads `10:3` with the `3` occluded. Not observed at the 2560x720 Edge slot, which is
+  where the clock's size was measured, so this is very likely a browser-aspect regression the port
+  introduced rather than a slot layout bug. **Not fixed here:** found while auditing the README,
+  and a CSS change wants its own measured pass at the slots in `widget/DEV.md`.
+- **BRAND-a (2026-09-09) — the on-glass badge still reads `Claw'deck`.**
+  `widget/index.html:338` is `<text class="badge-word" ...>Claw'deck</text>`, so the shipping panel
+  renders the project's former name above the crab, in a browser and in iCUE alike. Every one of
+  the nine screenshots in `store/shots/` therefore carries it, which `store/LISTING.md:29-31`
+  already records as a store-submission blocker. The README's hero shot is captioned to say so
+  rather than pretending otherwise. **Not fixed here:** renaming the badge is a branding decision,
+  it touches the SVG geometry the badge width was measured against, and the shots need re-taking
+  with it.
 - **UPG-a (2026-09-04, the port) — a pre-port Windows install is not recognised after upgrading.**
   Install, uninstall, repair and restore find SideCrab's own entries in `~/.claude/settings.json`
   by the URL substring `$HookUrlMarker`, which the port moved from `127.0.0.1:2722/v1/hook` to

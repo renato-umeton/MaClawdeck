@@ -631,7 +631,9 @@ The honest list lives in [`docs/BACKLOG.md`](docs/BACKLOG.md). Worth knowing bef
   uninstall will not remove them. [The procedure is above](#upgrading-an-install-from-before-the-port).
 - **GHOST-a** - after a crabd restart, a session that was killed by an app restart can read
   `working` for up to 15 minutes before transcript aging retires it.
-- Eleven further small cosmetic or edge-case items under "Small, known, not yet fixed".
+- Thirteen further small cosmetic or edge-case items under "Small, known, not yet fixed",
+  including `WID-b` (the moon chip overlaps the clock in a browser window) and `BRAND-a` (the
+  on-glass badge still reads `Claw'deck`).
 
 ---
 
