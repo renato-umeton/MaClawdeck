@@ -272,8 +272,13 @@ class LaunchctlQueryTests(unittest.TestCase):
         Patched by side effect rather than by deleting the attribute: a real Windows host
         raises at the lookup and this raises at the call, which no caller can tell apart,
         and deleting `os.getuid` process-wide would be visible to every other thread.
+
+        `create=True` because ON Windows there is no `os.getuid` to patch and mock.patch
+        refuses a name it cannot find - which made this test, whose whole subject is a
+        host without the attribute, the one test that could not run on the host that has
+        no attribute. With it, both platforms take the same branch for the same reason.
         """
-        with mock.patch("crabd.os.getuid",
+        with mock.patch("crabd.os.getuid", create=True,
                         side_effect=AttributeError("module 'os' has no getuid")):
             with self.assertRaises(OSError):
                 crabd.DarwinPlatform().service_query("com.sidecrab.toast", 10)

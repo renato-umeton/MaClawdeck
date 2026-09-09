@@ -17,10 +17,14 @@ THE TOKENS ARE SECRETS, and the tests below are the enforcement: neither may app
 the machine - which is why the store command travels on `security -i`'s STDIN and only
 the reads (which carry no secret at all) use an argv.
 
-Every test here is pure and runs on any OS: `/usr/bin/security` is behind an injected
-seam, and the module kill switch `KEYCHAIN_CREDENTIALS_ENABLED` is set False for the
-whole module so nothing can reach the operator's real Keychain by accident. The one
-exception is the live test at the bottom, which is opt-in and says why.
+Every test here is pure: `/usr/bin/security` is behind an injected seam, and the module
+kill switch `KEYCHAIN_CREDENTIALS_ENABLED` is set False for the whole module so nothing
+can reach the operator's real Keychain by accident. The one exception is the live test at
+the bottom, which is opt-in and says why.
+
+Pure is not the same as portable. The tests that put a REAL ITEM through the seam are
+skipped off macOS - see NO_KEYCHAIN_OFF_MACOS below for the mechanism - and the ones that
+are about shape, wording or the platform surface run everywhere.
 """
 
 import ast
@@ -40,6 +44,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import crabd  # noqa: E402
 from _httpkeepalive import start_test_server  # noqa: E402
+
+
+# ------------------------------------------------- why half of this file is macOS-only
+
+#: The ACCOUNT half of both Keychain items is `pwd.getpwuid(os.getuid())`, and there is
+#: no `pwd` off POSIX - so `crabd._login_account()` is None on Windows and every store
+#: and every read returns on the "there is no login account to name" branch BEFORE the
+#: injected `security` fake is reached. A test that puts a real item through the seam
+#: therefore fails there, and its neighbours that assert "the fake was never called" pass
+#: there for a reason that has nothing to do with what they ask - which is worse. crabd
+#: never SELECTS DarwinPlatform on Windows either; the seam is what lets this suite build
+#: one anyway, and that is a macOS question being asked on a macOS host.
+#:
+#: Only the tests that need an ITEM carry this. Shape checks, wording, the platform
+#: surface and the source-text rules are portable and stay portable.
+NO_KEYCHAIN_OFF_MACOS = ("the login Keychain, and the pwd.getpwuid account that names "
+                         "its items, exist only on macOS")
 
 
 # --------------------------------------------------------------- module isolation
@@ -253,11 +274,13 @@ class LimitsTokenStoreTests(KeychainCase):
     def store(self, fake, token=GOOD_TOKEN):
         return self.platform(fake).store_limits_token(token)
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_a_token_stored_is_a_token_read_back(self):
         fake = FakeSecurity()
         self.assertIs(self.store(fake), True)
         self.assertEqual(self.platform(fake).read_limits_token(None), GOOD_TOKEN)
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_the_item_is_named_the_way_the_installer_names_it(self):
         fake = FakeSecurity()
         self.store(fake)
@@ -265,6 +288,7 @@ class LimitsTokenStoreTests(KeychainCase):
                          [(crabd.KEYCHAIN_LIMITS_SERVICE, self.account())])
         self.assertEqual(crabd.KEYCHAIN_LIMITS_SERVICE, "SideCrab limits token")
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_the_store_updates_an_existing_item_rather_than_failing_on_it(self):
         """`-U`. Without it, storing a second token is an error on an operator who has
         simply minted a new one - and the old, rejected token stays in the Keychain."""
@@ -275,6 +299,7 @@ class LimitsTokenStoreTests(KeychainCase):
         self.assertEqual(self.platform(fake).read_limits_token(None),
                          "sk-ant-oat01-" + "b" * 40)
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_the_secret_never_appears_in_an_argument_list(self):
         """THE ARGV TEST, and it is the reason the store goes through `security -i`.
 
@@ -425,6 +450,7 @@ class KeychainNameSafetyTests(KeychainCase):
                 self.assertEqual(fake.calls, [])
                 self.assertEqual(noise.count("nothing was stored"), 1, noise)
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_an_ordinary_name_with_spaces_is_still_stored(self):
         """The bound on the rule: the production service name HAS spaces in it, and
         quoting is exactly what it is quoted for."""
@@ -433,6 +459,7 @@ class KeychainNameSafetyTests(KeychainCase):
         self.assertIn(f'-s "{crabd.KEYCHAIN_LIMITS_SERVICE}"', fake.calls[0][1])
 
 
+@unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
 class LimitsTokenReadFailureTests(KeychainCase):
     """Absence is silent; every other failure says so once and says nothing else."""
 
@@ -582,6 +609,7 @@ class KeychainCredentialsTests(KeychainCase):
     downstream is unchanged - which is the whole point. `_fetch` does its own JSON
     parsing, so the Keychain is a SOURCE of the same text, not a second code path."""
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_the_keychain_document_feeds_the_limits_reader(self):
         fake = self.with_item(CLI_SERVICE, credential_document("keychain-token"))
         out = self.reader(fake).get(1_800_000_000.0, force=True)
@@ -595,6 +623,7 @@ class KeychainCredentialsTests(KeychainCase):
         out = self.reader(fake).get(1_800_000_000.0, force=True)
         self.assertNotIn("keychain-token", crabd.dump_state(out).decode())
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_the_read_carries_no_secret_in_its_argv_and_nothing_on_stdin(self):
         """The read is the direction that needs no `-i`: the secret comes back on
         STDOUT, and the argv names only the item."""
@@ -607,6 +636,7 @@ class KeychainCredentialsTests(KeychainCase):
         self.assertEqual(timeout, crabd.KEYCHAIN_TIMEOUT_SEC)
 
 
+@unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
 class NoKeychainItemTests(KeychainCase):
     """Exit 44 is ABSENCE, not failure: no file and no item is the same "nothing is
     logged in here" crabd has always reported, and it must stay silent - a line every
@@ -637,6 +667,7 @@ class KeychainRefusedTests(KeychainCase):
     REFUSED = (36, "", "security: SecKeychainSearchCopyNext: User interaction is not "
                        "allowed.\n")
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_a_refused_read_is_its_own_note_and_never_the_missing_one(self):
         refused = self.reader(FakeSecurity(answer=self.REFUSED))
         out, _noise = self.capture(lambda: refused.get(1_800_000_000.0, force=True))
@@ -646,6 +677,7 @@ class KeychainRefusedTests(KeychainCase):
         missing = self.reader(FakeSecurity()).get(1_800_000_000.0, force=True)
         self.assertNotEqual(out["note"], missing["note"])
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_the_refusal_is_logged_once_over_three_polls_and_names_the_exit_code(self):
         reader = self.reader(FakeSecurity(answer=self.REFUSED))
         _out, noise = self.capture(
@@ -656,6 +688,7 @@ class KeychainRefusedTests(KeychainCase):
         # that could one day carry a value.
         self.assertNotIn("SecKeychainSearchCopyNext", noise)
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_a_seam_that_cannot_be_run_at_all_is_not_this_refusal(self):
         """A missing binary, a refused spawn, a `security` that never returns: the tool
         never RAN, so crabd learned nothing about whether credentials exist.
@@ -731,6 +764,7 @@ class KeychainKillSwitchTests(KeychainCase):
         self.assertIsNone(platform.cli_credentials())
         self.assertEqual(fake.calls, [])
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_an_explicit_constructor_argument_still_outranks_it(self):
         original = crabd.CUSTOM_CLAUDE_HOME
         self.addCleanup(lambda: setattr(crabd, "CUSTOM_CLAUDE_HOME", original))
@@ -768,6 +802,7 @@ class KeychainKillSwitchTests(KeychainCase):
         self.assertIn("CRABD_CLAUDE_HOME", lines[0])
 
 
+@unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
 class KeychainPayloadShapeTests(KeychainCase):
     """The payload was NEVER READ while this was written, so it is parsed as the file's
     shape and nothing is guessed. A payload that is not that shape falls onto the notes
@@ -810,6 +845,7 @@ class LimitsTokenHintTests(unittest.TestCase):
         self.assertIs(crabd.NullPlatform().store_limits_token(GOOD_TOKEN), False)
 
 
+@unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
 class LimitsPrecedenceThroughTheSeamTests(KeychainCase):
     """v0.30.0's precedence, unchanged, with both sources coming out of the Keychain.
 
@@ -876,6 +912,7 @@ class LimitsPrecedenceThroughTheSeamTests(KeychainCase):
         self.assertEqual(rejecting, ["Bearer " + GOOD_TOKEN])
 
 
+@unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
 class NeitherSecretReachesTheWireTests(KeychainCase):
     """The rule both problems share, asserted on the bytes crabd actually serves.
 
@@ -954,6 +991,7 @@ class ModelCatalogThroughTheKeychainTests(KeychainCase):
         crabd.urllib.request.urlopen = fake
         return seen
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_the_window_is_fetched_with_the_token_from_the_keychain(self):
         seen = self.catalog_http(self.CATALOG)
         fake = self.with_item(CLI_SERVICE, credential_document("keychain-token"))
@@ -971,6 +1009,7 @@ class ModelCatalogThroughTheKeychainTests(KeychainCase):
         self.assertEqual(seen, ["Bearer file-token"])
         self.assertEqual(fake.calls, [])
 
+    @unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
     def test_a_refused_keychain_is_no_window_and_one_line_not_a_crash(self):
         """The catalog's failure rule is one answer for everything: no entry, so
         `contextWindowTokens` is null and the bar does not draw. A PermissionError out of
@@ -1043,6 +1082,7 @@ class EveryModuleDisablesTheKeychainTests(unittest.TestCase):
                                              f"{path.name}: {ast.unparse(value)}")
 
 
+@unittest.skipUnless(sys.platform == "darwin", NO_KEYCHAIN_OFF_MACOS)
 class NoTestReachesTheRealSecurityBinaryTests(KeychainCase):
     """The kill switch, proved as an ISOLATION guarantee rather than as a feature.
 

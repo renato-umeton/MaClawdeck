@@ -228,6 +228,16 @@ class PortCollisionTests(unittest.TestCase):
     now says how to find out.
     """
 
+    #: What THIS operating system calls a port that already has a listener, in its own
+    #: words - which is the whole point of quoting it rather than the exception's class.
+    #: Windows never says "Address already in use": MEASURED in CI on windows-latest,
+    #: WSAEADDRINUSE reaches Python as "[WinError 10048] Only one usage of each socket
+    #: address (protocol/network address/port) is normally permitted." The PROPERTY under
+    #: test is true on both platforms, so it is asserted on both - per platform, because
+    #: the sentence an operator can search for is not the same sentence.
+    IN_USE_WORDING = (("WinError 10048", "Only one usage of each socket address")
+                      if sys.platform == "win32" else ("Address already in use",))
+
     def held_port(self) -> int:
         """A port with a real listener on it, released at teardown."""
         holder = socket.socket()
@@ -278,7 +288,9 @@ class PortCollisionTests(unittest.TestCase):
         refusal on a privileged one."""
         port = self.held_port()
         _, message = crabd._bind_server("127.0.0.1", port)
-        self.assertIn("Address already in use", message)
+        for wording in self.IN_USE_WORDING:
+            with self.subTest(wording=wording):
+                self.assertIn(wording, message)
         self.assertNotIn("(OSError)", message)
 
     def test_the_message_does_not_claim_a_cause_it_did_not_verify(self):
