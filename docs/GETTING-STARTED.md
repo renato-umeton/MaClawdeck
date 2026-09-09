@@ -53,7 +53,7 @@ the LaunchAgent files, because an agent does not inherit your login `PATH`.
 ## 2. Clone it
 
 ```sh
-git clone https://github.com/Dixie-sketch/Clawdeck.git ~/SideCrab
+git clone https://github.com/renato-umeton/MaClawdeck.git ~/SideCrab
 cd ~/SideCrab
 ```
 
