@@ -88,7 +88,7 @@ except ImportError:                     # pragma: no cover - Windows
 # does NOT - the .icuewidget import is a double-click at the iCUE console - so shipping
 # schema N+1 dead-feeds the on-glass panel until someone stands at the desk.
 SCHEMA_BREAKING = 5
-VERSION = "0.34.0"
+VERSION = "0.35.0"
 
 HOST = "127.0.0.1"
 # The production port, and the one the service registration owns. It was 2722 (C-R-A-B on
@@ -2141,7 +2141,7 @@ class FileFacts:
     __slots__ = (
         "path", "session_id", "is_subagent", "size", "mtime", "offset", "pending",
         "requests", "custom_title", "ai_title", "last_prompt", "first_prompt",
-        "last_cwd", "last_model", "last_speed", "last_ts",
+        "last_cwd", "last_model", "last_speed", "last_effort", "last_ts",
         "question", "question_ts", "question_rank", "agent_labels", "_pending_agents",
         "context_tokens", "context_ts", "skipped", "_lock",
     )
@@ -2168,6 +2168,10 @@ class FileFacts:
         self.last_cwd: str | None = None
         self.last_model: str | None = None
         self.last_speed: str | None = None
+        # v0.35.0. Reasoning effort, off the assistant record's TOP LEVEL - not
+        # `message`, and not `message.usage` where `speed` sits. Kept verbatim: the set
+        # of values grows, so validating against one would blank the next level shipped.
+        self.last_effort: str | None = None
         self.last_ts: float = 0.0
         # Newest question this transcript carries, with the timestamp that dates it and
         # a rank so an AskUserQuestion beats a trailing "?" written in the same second.
@@ -2201,7 +2205,7 @@ class FileFacts:
         self.pending = b""
         self.requests.clear()
         self.custom_title = self.ai_title = self.last_prompt = self.first_prompt = None
-        self.last_cwd = self.last_model = self.last_speed = None
+        self.last_cwd = self.last_model = self.last_speed = self.last_effort = None
         self.last_ts = 0.0
         self.question = None
         self.question_ts = 0.0
@@ -2332,6 +2336,12 @@ class FileFacts:
         speed = usage.get("speed")
         if isinstance(speed, str) and speed:
             self.last_speed = speed
+        # `obj`, not `message`: `effort` rides on the line object. A <synthetic> line
+        # carries none, and absence leaves the last stated value alone rather than
+        # blanking it - the same rule `model` and `speed` follow.
+        effort = obj.get("effort")
+        if isinstance(effort, str) and effort:
+            self.last_effort = effort
         request_id = obj.get("requestId")
         if not isinstance(request_id, str) or not usage:
             return
@@ -6601,6 +6611,7 @@ class StateBuilder:
                 row["cwd"] = facts.last_cwd
                 row["model"] = facts.last_model
                 row["speed"] = facts.last_speed
+                row["effort"] = facts.last_effort
                 row["question"] = facts.question
                 row["question_ts"] = facts.question_ts
                 # .labels()/.usage_records() hand back COPIES taken under the file's own
@@ -6800,7 +6811,7 @@ class StateBuilder:
     @staticmethod
     def _blank_session() -> dict:
         return {"title": None, "title_source": None, "cwd": None,
-                "model": None, "speed": None,
+                "model": None, "speed": None, "effort": None,
                 "mtime": 0.0, "sub_total": 0, "sub_active": 0, "sub_files": [],
                 "agent_labels": {}, "question": None, "question_ts": 0.0,
                 "context_tokens": None, "context_ts": 0.0,
@@ -6903,6 +6914,7 @@ class StateBuilder:
                 "lastEvent": (hook or {}).get("last_event") or self._implied_event(state),
                 "model": info["model"],
                 "speed": info["speed"],
+                "effort": info["effort"],
                 "subagents": {"running": running, "total": info["sub_total"]},
                 "todayOutputTokens": session_output.get(sid, 0),
                 "question": self._question(state, hook, info, since),

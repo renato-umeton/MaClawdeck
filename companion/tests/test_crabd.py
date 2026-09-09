@@ -124,10 +124,12 @@ def iso(epoch):
 
 def assistant_line(request_id, ts, output=100, model="claude-fable-5",
                    speed="standard", cwd="C:\\IT", cache_read=7, cache_create=9,
-                   inp=2):
-    return {
+                   inp=2, effort="max"):
+    # `effort` is TOP-LEVEL on the real line, not inside message.usage where `speed`
+    # lives; effort=None writes no key at all, which is the shape a <synthetic> line has.
+    line = {
         "type": "assistant", "requestId": request_id, "timestamp": iso(ts),
-        "cwd": cwd, "gitBranch": "master", "effort": "max", "isSidechain": False,
+        "cwd": cwd, "gitBranch": "master", "isSidechain": False,
         "message": {
             "role": "assistant", "model": model,
             "usage": {
@@ -138,6 +140,9 @@ def assistant_line(request_id, ts, output=100, model="claude-fable-5",
             },
         },
     }
+    if effort is not None:
+        line["effort"] = effort
+    return line
 
 
 def user_line(text, ts, cwd="C:\\IT"):
@@ -2112,7 +2117,7 @@ class ServeTests(TempProjects):
         row = state["sessions"][0]
         self.assertEqual(sorted(row),
                          ["acked", "branch", "contextSource", "contextTokens",
-                          "contextWindowTokens", "cwd",
+                          "contextWindowTokens", "cwd", "effort",
                           "events", "id", "lastActivityAt", "lastEvent", "model",
                           "pendingPermission", "question", "queuedContinue", "repo",
                           "speed", "state", "stateSince", "subagentDetail", "subagents",
@@ -2131,6 +2136,8 @@ class ServeTests(TempProjects):
         self.assertEqual(row["title"], "SideCrab build")
         self.assertEqual(row["model"], "claude-fable-5")
         self.assertEqual(row["speed"], "standard")
+        # v0.35.0: verbatim off the assistant line's TOP-LEVEL `effort`, not validated.
+        self.assertEqual(row["effort"], "max")
         self.assertEqual(row["state"], "working")
         self.assertEqual(row["subagents"], {"running": 1, "total": 1})
         # 120 + 80 from the parent (req_1 deduped) + 45 from the subagent.
@@ -3205,7 +3212,7 @@ class ActionEndpointTests(ServedOverASocket):
         are all additive and none moves it."""
         self.assertEqual(self.state()["schema"], 5)
         self.assertEqual(crabd.SCHEMA_BREAKING, 5)
-        self.assertEqual(crabd.VERSION, "0.34.0")
+        self.assertEqual(crabd.VERSION, "0.35.0")
 
     def test_the_v6_fields_ride_on_schema_5_in_the_served_document(self):
         """The compat contract in ONE test: the fields the deployed v0.5.0 widget has
@@ -4293,6 +4300,79 @@ class ByModelFromTranscriptsTests(TempProjects):
                          [{"model": "claude-sonnet-4-5", "outputTokens": 300},
                           {"model": "claude-opus-5", "outputTokens": 250}])
         self.assertEqual(burn["today"]["outputTokens"], 550)
+
+
+# ---------------------------------------------------------------- effort (v0.35.0)
+
+class EffortTests(TempProjects):
+    """Contract v0.35.0 (additive, served under schema 5): sessions[].effort - the
+    top-level `effort` of the newest assistant line, SERVED VERBATIM like `model`."""
+
+    def facts(self, session, lines):
+        path = self.session_path(session)
+        write_jsonl(path, lines)
+        facts = crabd.FileFacts(path, session, False)
+        facts.refresh()
+        return facts
+
+    def row(self, session_id, now=None):
+        _builder, state = self.build(now=now)
+        return next(r for r in state["sessions"] if r["id"] == session_id)
+
+    def test_effort_is_captured_from_an_assistant_line(self):
+        facts = self.facts("s-eff1", [assistant_line("req_A", time.time(), effort="high")])
+        self.assertEqual(facts.last_effort, "high")
+
+    def test_the_newest_assistant_line_wins(self):
+        now = time.time()
+        facts = self.facts("s-eff2", [
+            assistant_line("req_A", now - 300, effort="high"),
+            assistant_line("req_B", now - 60, effort="xhigh"),
+        ])
+        self.assertEqual(facts.last_effort, "xhigh")
+
+    def test_a_value_nobody_has_seen_is_still_served(self):
+        """No enum, deliberately: an unrecognised effort renders as itself, because a
+        whitelist here would blank the first new level Claude Code ships."""
+        facts = self.facts("s-eff3", [assistant_line("req_A", time.time(), effort="ultra")])
+        self.assertEqual(facts.last_effort, "ultra")
+        self.assertEqual(self.row("s-eff3")["effort"], "ultra")
+
+    def test_a_transcript_with_no_effort_serves_null(self):
+        facts = self.facts("s-eff4", [assistant_line("req_A", time.time(), effort=None)])
+        self.assertIsNone(facts.last_effort)
+        self.assertIsNone(self.row("s-eff4")["effort"])
+
+    def test_a_synthetic_line_does_not_overwrite_a_real_value(self):
+        """<synthetic> model lines carry no `effort`. Absence must leave the last stated
+        value alone - the same rule `model` follows - never blank it and never guess."""
+        now = time.time()
+        facts = self.facts("s-eff5", [
+            assistant_line("req_A", now - 60, effort="max"),
+            assistant_line("req_B", now - 30, model="<synthetic>", effort=None),
+        ])
+        self.assertEqual(facts.last_effort, "max")
+
+    def test_a_non_string_effort_is_ignored(self):
+        facts = self.facts("s-eff6", [
+            assistant_line("req_A", time.time() - 60, effort="high"),
+            assistant_line("req_B", time.time() - 30, effort=7),
+        ])
+        self.assertEqual(facts.last_effort, "high")
+
+    def test_effort_does_not_leak_between_sessions(self):
+        now = time.time()
+        self.facts("s-eff7", [assistant_line("req_A", now - 60, effort="max")])
+        self.facts("s-eff8", [assistant_line("req_B", now - 30, effort=None)])
+        self.assertEqual(self.row("s-eff7")["effort"], "max")
+        self.assertIsNone(self.row("s-eff8")["effort"])
+
+    def test_a_reparse_from_zero_clears_the_old_value_first(self):
+        """reset() runs when a transcript is truncated or re-admitted; leaving a stale
+        effort behind would re-serve a value the file no longer states."""
+        facts = self.facts("s-eff9", [assistant_line("req_A", time.time(), effort="max")])
+        facts.reset()
+        self.assertIsNone(facts.last_effort)
 
 
 # ------------------------------------------------------------ contextTokens (v6)
@@ -5976,7 +6056,7 @@ class HistoryEndpointTests(ServedOverASocket):
 
     def test_state_and_health_are_untouched_by_the_new_route(self):
         self.assertIn("schema", self.state())
-        self.assertEqual(self.client.get("/v1/health").json()["version"], "0.34.0")
+        self.assertEqual(self.client.get("/v1/health").json()["version"], "0.35.0")
 
     def test_the_endpoint_does_not_write_to_the_history_file(self):
         """Read-only by contract. A GET that touched the file would also invalidate its

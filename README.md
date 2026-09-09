@@ -477,8 +477,10 @@ curl -s http://localhost:9999/v1/health
 - **The crab** is the summary. Calm = nothing needs you. Alert with a glow = a session is
   waiting. Worried and grey = the data is stale or the companion is gone. It sweats when a limit
   is nearly full, and it has a few tricks it does on its own.
-- **Session cards** show state, model, elapsed time, the repo it is working in, a hairline for how
-  full that session's context window is, and a "queued: …" line when you have sent it a next step.
+- **Session cards** show state, model, the reasoning effort that model last ran at, elapsed time,
+  the repo it is working in, a hairline for how full that session's context window is, and a
+  "queued: …" line when you have sent it a next step. A session whose transcript never said what
+  effort it was using simply carries no effort badge.
 - **Limit gauges** show each rate-limit window, how full it is, when it resets, and a forecast of
   when the recent burn rate would fill it.
 - **TODAY** shows token burn with a sparkline, the daily budget if you set one, and cost when

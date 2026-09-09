@@ -1,4 +1,4 @@
-/* SideCrab widget v0.30.0 — runtime, consuming /v1/state (schema 1–5) from crabd
+/* SideCrab widget v0.31.0 — runtime, consuming /v1/state (schema 1–5) from crabd
    on loopback. docs/STATE-CONTRACT.md is authoritative; this file must not
    invent fields.
 
@@ -37,6 +37,7 @@ var SPARK_BUCKETS = 24;
 var SPARK_BUCKETS_7D = 7;      /* contract: burn.daily is 7 entries, oldest first */
 var SUB_ROWS_MAX = 5;          /* contract caps subagentDetail at 5 */
 var SUB_ROWS_MAX_Q = 1;        /* a card already carrying a 4-line question has room for one, plus the "+N more" */
+var EFFORT_LABEL_MAX = 8;      /* the badge is unvalidated text off the wire; a long word must not blow the badge row open */
 var SHEET_SUB_MAX = 5;         /* the sheet shows the list whole; the cap only guards a feed that ignores its own cap */
 var SHEET_EVENTS_MAX = 8;      /* contract caps events at 8, newest first */
 /* The action sheet shows fewer, because the QUESTION is what that sheet is for.
@@ -1106,6 +1107,21 @@ function fmtNum(n) {
 function shortModel(m) {
 	if (!m) return null;
 	return String(m).replace(/^claude-/, '').replace(/-\d{6,8}$/, '');
+}
+
+/* sessions[].effort (crabd 0.35.0), string | null, served verbatim. Rendered as
+   itself, uppercased, and never matched against a set of known levels: the levels
+   grow, and a whitelist here would render the first new one as nothing at all.
+   A non-string — absent on a crabd below 0.35.0, null on a transcript that never
+   stated one — is no badge, because an unknown effort is not a low one. */
+function effortLabel(s) {
+	if (!s || typeof s.effort !== 'string') return null;
+	var v = s.effort.trim();
+	if (!v) return null;
+	/* Fold THEN clamp. Case folding expands - '\uFB03' is one character and upper-cases
+	   to three - so clamping first let a 40-character value render 24 wide, which is
+	   the exact overflow EFFORT_LABEL_MAX exists to stop (.badge is nowrap, no max-width). */
+	return v.toUpperCase().slice(0, EFFORT_LABEL_MAX);
 }
 
 /* The 12/24-hour default lives in ONE place, and it is the MANIFEST's (v0.20.0,
@@ -2855,7 +2871,14 @@ function renderSessions(sessions, status, quiet, recap) {
 		/* repoLine(), not `s.repo, s.branch`: the line FALLS BACK to cwd, so signing
 		   the two fields left a repo-less session's path stale (audit F1). Signing
 		   the rendered value covers every branch of that fallback at once. */
+		/* effort (v0.31.0) is card STRUCTURE for the ctx chip's reason: the badge
+		   appears and disappears with the field — a crabd below 0.35.0 serves none at
+		   all — so without it here the badge row goes stale for the life of the card. */
 		return [s.id, s.state, s.title, s.titleSource || '', repoLine(s), s.model, s.speed,
+			/* Delimited, unlike its neighbours: effort is served verbatim from an open
+			   vocabulary, so effort:'fast' with no speed would otherwise sign identically
+			   to speed:'fast' with no effort - two different badges, one signature. */
+			'|' + (typeof s.effort === 'string' ? s.effort : ''),
 			(s.subagents && s.subagents.running) || 0, s.lastEvent,
 			s.question || '', s.turnStartedAt ? '1' : '0', effectiveAcked(s) ? '1' : '0',
 			/* The pin glyph is card STRUCTURE for the same reason the ctx chip is.
@@ -3403,6 +3426,11 @@ function buildCard(s, quiet) {
 		badges.appendChild(makeBadge('ctx ' + fmtNum(s.contextTokens), 'badge-ctx'));
 	}
 	if (s.speed === 'fast') badges.appendChild(makeBadge('FAST', 'badge-fast'));
+	/* Whatever string crabd served, uppercased — never matched against a set. The
+	   levels grow, and a widget that only knew today's would render tomorrow's blank.
+	   Null/absent is no badge: an unknown effort is not a low one. */
+	var effort = effortLabel(s);
+	if (effort) badges.appendChild(makeBadge(effort, 'badge-effort'));
 	var running = s.subagents && Number(s.subagents.running);
 	if (isFinite(running) && running > 0) badges.appendChild(makeBadge(running + ' sub', 'badge-sub'));
 	if (acked) badges.appendChild(makeBadge('ACKED', 'badge-ack'));
@@ -4349,6 +4377,8 @@ function syncSheetMeta(s) {
 	var model = shortModel(s.model);
 	if (model) chips.push({ text: model, cls: '' });
 	if (s.speed === 'fast') chips.push({ text: 'FAST', cls: 'sheet-chip-fast' });
+	var effort = effortLabel(s);
+	if (effort) chips.push({ text: effort, cls: 'sheet-chip-effort' });
 	var out = Number(s.todayOutputTokens);
 	chips.push({ text: (isFinite(out) ? fmtNum(out) : EMDASH) + ' out today', cls: '' });
 

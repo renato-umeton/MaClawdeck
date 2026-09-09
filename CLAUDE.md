@@ -110,8 +110,8 @@ checks test type, not truthiness (`quiet.override: null`, `contextWindowTokens: 
 null` are all real shapes). The widget's only comparison against `doc.schema` is the acceptance
 check; adding a second undoes the v0.6.1 rework. A bump costs a reload for a panel crabd serves and
 dead-feeds every *installed iCUE widget* until someone re-imports it at the console, so additive
-work never touches it. The top five dated sections (v0.30.0 to v0.34.0) are the port's wire record;
-the file's own index paragraph points at them.
+work never touches it. The five dated sections v0.30.0 to v0.34.0 are the port's wire record, with
+v0.35.0 now above them; the file's own index paragraph points at them.
 
 ### crabd (`companion/crabd.py`, one module, no argv)
 

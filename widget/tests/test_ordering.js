@@ -170,6 +170,25 @@ ok(W.fmtNum(W.DIAG_COUNT_SHOWN_MAX).length <= 5,
 	'the diag counter stays inside its five-character width budget');
 eq(W.DIAG_COUNT_SHOWN_MAX, 999999, 'the diag clamp is still the value the width budget was measured on');
 
+/* --------------------------------------------- sessions[].effort (crabd 0.35.0) */
+
+/* Served verbatim, so the badge is whatever arrived, uppercased. NO enum: the set
+   of levels grows, and a widget that only knew today's would paint the next one
+   blank. The absent cases are the honest-failure half — no badge, never a
+   guessed level and never the previous card's. */
+eq(W.effortLabel({ effort: 'high' }), 'HIGH', 'a known level is its own name, uppercased');
+eq(W.effortLabel({ effort: 'xhigh' }), 'XHIGH', 'xhigh is not abbreviated');
+eq(W.effortLabel({ effort: 'max' }), 'MAX', 'max is not abbreviated');
+eq(W.effortLabel({ effort: 'ultra' }), 'ULTRA', 'a level this widget has never seen still renders');
+eq(W.effortLabel({ effort: null }), null, 'a null effort is NO badge, never a level');
+eq(W.effortLabel({}), null, 'a crabd below 0.35.0 serves no key at all: no badge');
+eq(W.effortLabel({ effort: '' }), null, 'an empty string is not a level');
+eq(W.effortLabel({ effort: '   ' }), null, 'whitespace is not a level either');
+eq(W.effortLabel({ effort: 7 }), null, 'a non-string is refused rather than stringified');
+eq(W.effortLabel(null), null, 'no session, no badge');
+ok(W.effortLabel({ effort: '\ufb03'.repeat(40) }).length === W.EFFORT_LABEL_MAX,
+	'an over-long value off the wire is clamped, so it cannot open the badge row');
+
 /* ---------------------------------------------------------------------- done */
 
 console.log((failures ? 'FAILED' : 'ok') + '  ' + (checks - failures) + '/' + checks + ' checks');

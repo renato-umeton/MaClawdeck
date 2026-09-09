@@ -1,6 +1,6 @@
 # SideCrab state contract — `/v1/state` (schema 5-compat, feature-detected)
 
-**What the macOS port changed, by section.** The five dated sections below cover it, and none of
+**What the macOS port changed, by section.** The five dated port sections below cover it, and none of
 them changed the document's shape — the schema number did not move. **v0.34.0**: on macOS the
 long-lived limits token and Claude Code's own credential come from the login Keychain; three
 `limits.note` strings now name the platform's own command, and a fourth is new, separating a
@@ -26,6 +26,42 @@ append-only, newest-first rule is unchanged.
 >   AND a coordinated deploy — which is exactly why they should be rare.
 > The "Schema 6" section below is retitled in place: its FIELDS are unchanged and live; only
 > the schema NUMBER they ride on is now 5.
+
+## v0.35.0 (2026-09-09 — ADDITIVE: `sessions[].effort`; schema stays 5)
+
+crabd `VERSION` → `0.35.0`, widget → `0.31.0`. One new per-session field. `schema` stays **5**:
+this is additive, detected by field presence, and a bump would cost a reload on a served panel and
+dead-feed every installed iCUE widget until someone re-imported it.
+
+```jsonc
+"effort": "high"        // string | null — the reasoning effort of the last assistant message
+```
+
+**Where it comes from.** Claude Code writes a **top-level** `effort` key on `assistant` lines of
+the transcript JSONL — on the line object itself, **not** inside `message` and **not** inside
+`message.usage` (which is where `speed` lives). crabd captures it exactly where it captures
+`speed`: newest assistant line wins, per transcript, for the session's main file.
+
+**SERVED VERBATIM**, the same invariant `model` carries (CON-b). crabd does not validate it
+against a set, does not normalise case, and does not map it onto a vocabulary. MEASURED
+2026-09-09 over `~/.claude/projects/**/*.jsonl` on the machine this was written on - the same
+recursive glob crabd reads - 308 files, 290 of them stating an effort: `xhigh` (12838), `high`
+(11796), `max` (1852), and no fourth value. Counts grow with every session and are a snapshot,
+not a bound. Other values plainly exist and more will be added; an enum here would
+render a future value blank, which is worse than rendering a word nobody has seen yet. The widget
+uppercases it for display and renders whatever string arrives.
+
+**Absent is `null`, never a carry-over.** `<synthetic>` model lines carry no `effort`, and one
+older transcript has none at all. A line without the key leaves the last captured value alone
+inside the file it belongs to (the field records the last message that *stated* an effort, exactly
+as `model` and `speed` do), and a session whose transcript never states one serves `null` — never
+a guess, and never another session's value: the capture lives on `FileFacts`, one per transcript,
+and `reset()` clears it with `last_model` and `last_speed`.
+
+**What an old widget sees.** Nothing: unknown per-session keys are ignored, so a widget below
+0.31.0 keeps working against a crabd at 0.35.0. **What an old crabd serves a new widget:** no
+`effort` key, so `s.effort` is `undefined` and the badge is absent — the same presence test every
+additive field uses.
 
 ## v0.34.0 (2026-09-04 — BEHAVIOUR on macOS: the limits token and the CLI credential come from the login Keychain; schema stays 5)
 
@@ -1897,6 +1933,9 @@ Neither side may change it unilaterally — a change lands here first, bumps `sc
       //   size" — there has never been one, and inventing one is the thing both sides refuse. It falls
       //   through to `contextWindowTokens`, and to NO BAR when that is null.
       "speed": "standard" | "fast",
+      "effort": "high",                 // v0.35.0 — top-level `effort` of the last assistant line
+                                        //   (string | null), SERVED VERBATIM, never validated
+                                        //   against a set; see the section at the top
       "subagents": { "running": 0, "total": 0 },
       "todayOutputTokens": 0,
       "contextTokens": 549300,          // v0.6.0 — how full (int | null)

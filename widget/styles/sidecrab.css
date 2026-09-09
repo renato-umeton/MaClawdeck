@@ -1,4 +1,4 @@
-/* SideCrab widget v0.30.0 — Xeneon Edge (dashboard_lcd), designed at 2560x720
+/* SideCrab widget v0.31.0 — Xeneon Edge (dashboard_lcd), designed at 2560x720
    landscape, and served in a browser at any size since v0.30.0.
    QtWebEngine 6.9.3 / Chromium 130: no :has(), no container queries, no
    backdrop-filter, no subgrid. Everything below is flexbox/grid + custom props. */
@@ -1994,6 +1994,11 @@ body.quiet .card.writing.w2 .dot { transform: none; }
 	white-space: nowrap;
 }
 .badge-fast { border-color: var(--accent); color: var(--accent); letter-spacing: 0.1em; }
+/* The reasoning effort (v0.31.0). It sits beside the model because it is a
+   property OF that model's last request, and it is read as a label rather than a
+   signal — so it takes the chip metrics unchanged and separates from the muted
+   model badge on WEIGHT of colour, not on a second size or a second accent. */
+.badge-effort { border-color: var(--surface-line); color: var(--text-color); letter-spacing: 0.1em; }
 /* The context-window figure (v0.6.0). Deliberately the quietest badge on the
    card: it sits next to the model because it is a property OF the model's last
    request, and it is a number to glance at, never a signal. */
@@ -2995,6 +3000,7 @@ body.panel-settings .head-chip-gear {
 }
 .sheet-chip-state { border-color: var(--sheet-accent, var(--accent)); color: var(--sheet-accent, var(--accent)); }
 .sheet-chip-fast { border-color: var(--accent); color: var(--accent); letter-spacing: 0.1em; }
+.sheet-chip-effort { border-color: var(--surface-line); color: var(--text-color); letter-spacing: 0.1em; }
 
 /* Scrollless by contract: the list is capped in JS and clamped with a +N row,
    so the panel height is a function of the cap, never of the feed. */
@@ -3321,7 +3327,11 @@ body.quiet .core-sessions { color: var(--muted); }
 	   266 px of content, and model + ctx + FAST + "3 sub" is 277 px — the badges
 	   row wraps and the card grows a line. ctx is the badge that has to go: it
 	   annotates the model, it does not identify the session, and the full figure
-	   is one tap away in the sheet. The 2560x720 Edge slot keeps it. */
+	   is one tap away in the sheet. The 2560x720 Edge slot keeps it.
+	   RE-MEASURED 2026-09-09 (widget 0.31.0): the effort badge joined that row, and
+	   without ctx it now sums to 264.41 px against 265.84 available - 1.43 px of
+	   slack, which a longer model string spends. `.badge-effort` is the next chip
+	   to drop here if it does; see widget/DEV.md v0.31.0. */
 	.badge-ctx { display: none; }
 }
 @media (max-width: 1200px) {
