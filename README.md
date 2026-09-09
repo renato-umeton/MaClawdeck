@@ -26,19 +26,21 @@ project's former name - it has not been re-shot since the rename.*
 
 ## Contents
 
-- [What you need](#what-you-need)
-- [How it works](#how-it-works)
-- [**Install on macOS**](#install-on-macos)
-- [**Install on Windows**](#install-on-windows)
-- [After either install](#after-either-install)
-- [Using it](#using-it)
-- [Configuration](#configuration)
-- [Before you turn on panel approvals](#before-you-turn-on-panel-approvals)
-- [Troubleshooting](#troubleshooting)
-- [Known caveats](#known-caveats) · [Known issues](#known-issues)
-- [Security and privacy](#security-and-privacy)
-- [The iCUE widget](#the-icue-widget-for-the-corsair-xeneon-edge)
-- [For developers](#for-developers)
+**Start here:** [What you need](#what-you-need) · [How it works](#how-it-works)
+
+**Then your platform:**
+
+| | Install | Everything else about that platform |
+|---|---|---|
+| **macOS** | [Install on macOS](#install-on-macos) | [macOS details](#macos-details) |
+| **Windows** | [Install on Windows](#install-on-windows) | [Windows details](#windows-details) |
+
+**The same on both:** [After either install](#after-either-install) ·
+[Using it](#using-it) · [Configuration](#configuration) ·
+[Panel approvals](#before-you-turn-on-panel-approvals) ·
+[Troubleshooting](#troubleshooting) · [Known caveats](#known-caveats) ·
+[Known issues](#known-issues) · [Security and privacy](#security-and-privacy) ·
+[For developers](#for-developers)
 
 ---
 
@@ -49,6 +51,9 @@ Claude Code's local session data - it cannot see sessions on other machines) and
 browser**. The live panel was measured in **Chromium** (Playwright, 2560x720, no console errors).
 An iPad or a phone on the same network needs a tunnel you set up yourself; SideCrab does not open
 one, and does not listen anywhere a tunnel could reach without you.
+
+Requirements for both are here so you can compare before choosing; everything else that differs
+by platform is in [macOS details](#macos-details) and [Windows details](#windows-details).
 
 **On macOS**
 
@@ -64,7 +69,7 @@ one, and does not listen anywhere a tunnel could reach without you.
 | **PowerShell 7** (`pwsh`) | For every script under `setup\` | They all declare `#Requires -Version 7.0`. Windows PowerShell 5.1 will refuse to run them. |
 | **Windows PowerShell 5.1** | For desktop notifications only | Already on every Windows box. The notifier pins `System32\WindowsPowerShell\v1.0\powershell.exe` because the WinRT projection it needs exists only there. So you need **both** PowerShells. |
 | **Python 3.13+** | On `PATH` as `python.exe` or `python3.exe` | Unlike macOS there is **no version probe** - an older Python on `PATH` produces a task that fails at runtime rather than an install that refuses. The `WindowsApps` alias stub does not count. |
-| **iCUE + a Corsair Xeneon Edge** | **Optional** | Only for the on-glass widget build. The browser panel needs neither. |
+| **iCUE + a Corsair Xeneon Edge** | **Optional** | Only for [the on-glass widget build](#the-icue-widget-for-the-corsair-xeneon-edge). The browser panel needs neither. |
 
 Everything runs on the one machine, over `127.0.0.1:9999`. Two things ever leave it, both to
 Anthropic's API with your own token and both calls Claude Code makes anyway: the usage-limit check
@@ -172,6 +177,14 @@ day's history.
 Now open **<http://localhost:9999>**. Start a Claude Code session; within a few seconds a card
 for it appears.
 
+---
+
+## macOS details
+
+Everything in this section is macOS-only. The Windows equivalents are in
+[Windows details](#windows-details); anything that behaves the same on both platforms is in the
+shared sections further down.
+
 ### The one-time Keychain prompt
 
 Claude Code keeps its credential in your login Keychain (service `Claude Code-credentials`), and
@@ -184,12 +197,12 @@ says the Keychain refused, pointing at the prompt rather than telling you to log
 long-lived token you store yourself (below) is a different item and does not prompt - items
 created through the `security` tool carry that tool in their own access list.
 
-### Keeping the limit gauges alive (recommended)
+### Keeping the limit gauges alive (recommended, macOS)
 
-The gauges read the same OAuth token Claude Code uses. That token lives about six hours and is
-only rewritten when a terminal `claude` session makes an API call, so on a machine where you
-mostly use the desktop app the gauges go dark by the next morning. Fix it once with a long-lived
-token:
+The gauges read the same OAuth token Claude Code uses, and on **both platforms** that token
+lives about six hours and is only rewritten when a terminal `claude` session makes an API call -
+so on a machine where you mostly use the desktop app the gauges go dark by the next morning. Fix
+it once with a long-lived token; on a Mac it is stored in your login Keychain:
 
 ```sh
 claude setup-token                 # opens a browser sign-in, prints a token
@@ -201,7 +214,7 @@ The token is read from **stdin**, never from a command-line argument, so it neve
 token`, used only when the CLI's own token has expired, read fresh on each poll, never logged and
 never served. `--status` shows whether one is stored, never its value.
 
-### Updating and uninstalling
+### Updating and uninstalling (macOS)
 
 ```sh
 git -C ~/SideCrab pull
@@ -227,14 +240,47 @@ launchctl bootout gui/$(id -u)/com.sidecrab.toast
 rm ~/Library/LaunchAgents/com.sidecrab.toast.plist
 ```
 
+### Notifications come from Script Editor, carry no buttons, and stack
+
+They are posted through `osascript`, so macOS attributes them to Script Editor and the per-app
+notification switch is Script Editor's; the subtitle is always `SideCrab`, which is the only
+thing on screen naming the product. `display notification` has no action affordance and no
+replacement identifier, so a second outage notice sits beneath the first instead of replacing
+it. Acknowledge on the panel. Whether the notification **sound** is audible on your machine was
+not measured; it is `sound name "default"`.
+
+**If you dismissed the one-time permission prompt for Script Editor, alerts are lost silently** -
+the notifier logs the failure and re-arms, but nothing appears on screen. Turn it back on in
+System Settings > Notifications > Script Editor, then prove it with `python3
+notifier/sidecrab_toast.py --test-toast`.
+
+(Windows toasts, by contrast, carry Acknowledge and Snooze buttons and replace in place.)
+
+### App Nap and timer coalescing do not throttle the feed, measured
+
+Two minutes of sampling `/v1/state` against the live LaunchAgent gave 55 distinct snapshots, max
+gap 3.0 s, mean 2.19 s, none over 4 s, against a 2 s rebuild - so the plists carry no
+`ProcessType` key and the default scheduling stands. The reading was taken with the machine in
+normal use; battery with the lid shut is where a throttle would show, and that has not been
+measured. Recorded in [`docs/PORT-NOTES.md`](docs/PORT-NOTES.md).
+
+### Two things that only go wrong on a Mac
+
+| You see | It means | Do |
+|---|---|---|
+| Gauges show an em-dash and a note about the Keychain | crabd asked for `Claude Code-credentials` and macOS refused this process | Approve the prompt (Always Allow) when it appears, or run `claude` in a terminal so the CLI writes a credential crabd can read without it |
+| "python3 is 3.9" or a refusal naming the version | Only Apple's `/usr/bin/python3` was found | `brew install python@3.13`, or set `$SIDECRAB_PYTHON` to a 3.13+ interpreter |
+
+Everything else is in [Troubleshooting](#troubleshooting).
+
 ---
 
 ## Install on Windows
 
 Windows gets the same browser panel. crabd's static route has no platform branch, so
 `http://localhost:9999` is the panel on Windows exactly as it is on a Mac - **iCUE and a Corsair
-Xeneon Edge are optional**, and only for the on-glass widget build described at the end of this
-README.
+Xeneon Edge are optional**, and only for the on-glass widget build described in
+[The iCUE widget](#the-icue-widget-for-the-corsair-xeneon-edge) below.
 
 Open **PowerShell 7** (`pwsh`), not Windows PowerShell 5.1:
 
@@ -308,10 +354,19 @@ The three tasks are registered **hidden**, so they do not appear in Task Schedul
 Now open **<http://localhost:9999>**. The Windows smoke test has no row for the panel - it
 predates crabd serving one - so opening the page is the check.
 
-### Keeping the limit gauges alive (recommended)
+---
 
-Same six-hour token problem as on a Mac, same fix, a different store - DPAPI rather than the
-Keychain:
+## Windows details
+
+Everything in this section is Windows-only. The macOS equivalents are in
+[macOS details](#macos-details); anything that behaves the same on both platforms is in the
+shared sections further down.
+
+### Keeping the limit gauges alive (recommended, Windows)
+
+The same six-hour token problem described under
+[macOS details](#keeping-the-limit-gauges-alive-recommended-macos) - it is crabd's behaviour, not
+a platform's - and the same fix, into a different store: DPAPI rather than the Keychain.
 
 ```powershell
 claude setup-token                                   # prints a long-lived token
@@ -322,7 +377,7 @@ The prompt is a `Read-Host -AsSecureString`, so the token is never on the comman
 stored DPAPI-protected for your user at `~/.sidecrab/limits-token.dpapi`, decrypted only by crabd,
 never logged and never served. There is no macOS-style stdin form.
 
-### Updating and uninstalling
+### Updating and uninstalling (Windows)
 
 ```powershell
 pwsh -File .\setup\Update-SideCrab.ps1     # pull, refresh the tasks, restart crabd
@@ -331,9 +386,10 @@ pwsh -File .\setup\Restore-SideCrab.ps1    # list the settings.json backups; -La
 ```
 
 `Update-SideCrab.ps1` refuses on a dirty working tree before it pulls, and refuses to restart over
-a port held by something else, naming the PID. `Uninstall-SideCrab.ps1` keeps every backup at
-every switch, `-Purge` included; `-TaskName SideCrab-toast` uninstalls just the notifier and its
-two registrations.
+a port held by something else, naming the PID. As on macOS the panel updates with the same pull,
+because crabd serves it from this checkout - reload the tab. `Uninstall-SideCrab.ps1` keeps every
+backup at every switch, `-Purge` included; `-TaskName SideCrab-toast` uninstalls just the notifier
+and its two registrations.
 
 ### Upgrading an install from before the port
 
@@ -344,6 +400,45 @@ and uninstall, repair and restore never see the old ones at all. Open `~/.claude
 delete every hook entry whose command or URL contains `127.0.0.1:2722`, and keep the timestamped
 backup. This is `UPG-a` in [`docs/BACKLOG.md`](docs/BACKLOG.md); the intended fix is to match both
 markers.
+
+### The glow, and why it is parked
+
+The Corsair lighting helper is Windows-only - there is no macOS counterpart at all, so `fleet.glow`
+reads `absent` there, which is the truth rather than a placeholder, and crabd does not spawn
+anything looking for it.
+
+Auto-detection is refuted by a failed `import cuesdk`: the glow is skipped, loudly, with the pip
+line, because a glow that cannot import its SDK would register green and never light. An explicit
+`-WithGlow` is read as an instruction rather than a guess - it registers the task anyway and says
+plainly that it will not light until the dependency is installed.
+
+A `SideCrab-glow` task **you** disabled is re-registered and left disabled rather than
+resurrected - `-ForceEnable` is the only override, and it exists because
+`Register-ScheduledTask -Force` always writes an enabled task and once resurrected the parked
+glow into its own crash.
+
+### crabd writes no log file on Windows
+
+On macOS launchd captures its output to `~/.sidecrab/logs/com.sidecrab.crabd.log`; Task Scheduler
+has no equivalent, so diagnose crabd through `/v1/health` and `Repair-SideCrab.ps1` instead. The
+notifier does write `~/.sidecrab/logs/notifier.log`, and the glow writes `~/.sidecrab/glow.log`.
+
+### The iCUE widget for the Corsair Xeneon Edge
+
+SideCrab began as an iCUE widget for the Corsair Xeneon Edge, and **that build is still in the
+tree and still packageable** - the panel is the same files. It needs iCUE 5.44 or newer and a
+dashboard-LCD device. With Corsair's WidgetBuilder CLI, from the repo root on Windows:
+
+```powershell
+icuewidget validate widget
+icuewidget package widget
+```
+
+The validator's `icueEvents` warning is a known false positive. The `.icuewidget` it produces is
+gitignored; releases attach it, and importing one is a double-click at the iCUE console - which
+also means `Update-SideCrab.ps1` never updates the widget, only the source it is packaged from. On
+this route the Approval Pairing Code goes into the widget's settings in the iCUE console rather
+than into the panel's own settings sheet.
 
 ---
 
@@ -366,8 +461,8 @@ report on it, but you must add the two patterns yourself.
 
 ### Which version am I running
 
-`--status` does not print one. The versions are on the health endpoint, which is diagnostics rather
-than part of the wire contract:
+Neither `--status` nor `-Status` prints one. The versions are on the health endpoint, which is
+diagnostics rather than part of the wire contract:
 
 ```sh
 curl -s http://localhost:9999/v1/health
@@ -389,8 +484,8 @@ curl -s http://localhost:9999/v1/health
 - **TODAY** shows token burn with a sparkline, the daily budget if you set one, and cost when
   Claude Code's telemetry is flowing to the companion.
 - **The week strip** is the daily recap: sessions, commits in your configured repos, tokens.
-- **The hardware row** shows this machine's CPU and memory use while the companion runs. There are
-  no temperatures on macOS - see [Known caveats](#known-caveats).
+- **The hardware row** shows this machine's CPU and memory use while the companion runs. Die
+  temperatures are an iCUE-only reading - see [Known caveats](#known-caveats).
 
 ### The settings sheet
 
@@ -502,7 +597,7 @@ settings sheet.
   "allowContinue": true,                               // false disables continue prompts entirely
   "allowReply": false,                                 // off, and not reachable over HTTP
   "panelApprovals": { "enabled": false },              // approve/deny from the panel — see below
-  "recapRepos": ["/Users/you/dev/my-project"]          // extra repos to count commits in
+  "recapRepos": ["/Users/you/dev/my-project"]          // or "C:\\Users\\you\\dev\\proj"
 }
 ```
 
@@ -543,35 +638,40 @@ worth reading rather than assuming:
 - **Every failure is a pass-through.** Timeout, no tap, disabled, malformed, companion down: all
   return no decision, and the normal terminal dialog does its job. The worst case is the behaviour
   of a machine where SideCrab was never installed.
-- **The notification has no buttons on macOS.** When a request goes undecided, the notifier tells
-  you and says "Decide on the panel." A notification action is one click from a lock screen; that
-  is fine for acknowledging a dot and not for allowing a command. macOS notifications posted this
-  way carry no buttons anyway, but the rule came first.
+- **The notification never carries Approve/Deny buttons**, on either platform. When a request
+  goes undecided, the notifier tells you and says "Decide on the panel." A notification action is
+  one click from a lock screen; that is fine for acknowledging a dot and not for allowing a
+  command. Windows toasts carry buttons elsewhere and this one deliberately does not; macOS
+  notifications posted this way carry none anyway, but the rule came first.
 - **Verified live, operator present (2026-08-27)** on the Windows build via
   `setup/Verify-PanelApproval.ps1`: a panel Approve ran the command with no keyboard, a panel Deny
   blocked it, and a full minute of ignoring both surfaces ended in the pass-through with the
   terminal dialog in charge. Two behaviours worth knowing: the terminal dialog is **raced, not
   suppressed** (whichever surface answers first wins), and the two-button card carries a real
-  mis-tap risk. Prove it on a throwaway session on your own machine before trusting it.
+  mis-tap risk. **The macOS path has not had the same live turn**, so prove it on a throwaway
+  session on your own machine before trusting it on either platform.
 
 ---
 
 ## Troubleshooting
 
-macOS commands shown; the Windows equivalents are `pwsh -File .\setup\Install-SideCrab.ps1
--Status`, `Test-SideCrab.ps1` and `Repair-SideCrab.ps1`.
+These happen on both platforms. The exact commands are in your platform's sections -
+`./setup/install.sh --status` / `--doctor` and `./setup/update.sh` on macOS,
+`pwsh -File .\setup\Install-SideCrab.ps1 -Status`, `Test-SideCrab.ps1` and `Repair-SideCrab.ps1`
+on Windows. Note that `Update-SideCrab.ps1` is **not** the Windows way to restart a stopped crabd:
+it pulls first and throws before restarting anything if the tree is dirty. Use
+`Repair-SideCrab.ps1 -Fix`. Platform-only symptoms are in [macOS details](#macos-details) and
+[Windows details](#windows-details).
 
 | You see | It means | Do |
 |---|---|---|
-| Worried grey crab, "data as of HH:MM" | The companion is stopped, or the feed is older than 30 s | `./setup/install.sh --status`, then `./setup/update.sh` to restart it |
+| Worried grey crab, "data as of HH:MM" | The companion is stopped, or the feed is older than 30 s | `./setup/install.sh --status` then `./setup/update.sh` (macOS); `Install-SideCrab.ps1 -Status` then `Repair-SideCrab.ps1 -Fix` (Windows) |
 | Panel is fine but no session cards | Hooks are not firing | Check `~/.claude/settings.json` has the SideCrab entries; re-run the installer, which merges them idempotently. If you have set `allowedHttpHookUrls`, check both host forms are in it |
-| Limit gauges show an em-dash and "token expired" | The CLI's access token has passed its ~6 h life and nothing has refreshed it | Store a long-lived token once (above), or run any `claude` command in a terminal to refresh it |
-| Gauges show an em-dash and a note about the Keychain (macOS) | crabd asked for `Claude Code-credentials` and macOS refused this process | Approve the prompt (Always Allow) when it appears, or run `claude` in a terminal so the CLI writes a credential crabd can read without it |
-| The browser cannot connect at all | crabd is not running - the panel is a page crabd serves, so there is nothing to show you a SideCrab error screen | `./setup/install.sh --status`, then `./setup/update.sh` |
-| `crabd: cannot listen on 127.0.0.1:9999 - [Errno 48] Address already in use` | Something else holds the port. crabd stops loudly rather than moving to another one, because a crabd on a port nothing addresses is a silent dead panel | The message continues with the exact command that names the holder - run that, then stop it. `CRABD_PORT` is the other way out, but read the note below first |
-| "python3 is 3.9" or a refusal naming the version (macOS) | Only Apple's `/usr/bin/python3` was found | `brew install python@3.13`, or set `$SIDECRAB_PYTHON` to a 3.13+ interpreter |
+| Limit gauges show an em-dash and "token expired" | The CLI's access token has passed its ~6 h life and nothing has refreshed it | Store a long-lived token once - [macOS](#keeping-the-limit-gauges-alive-recommended-macos) / [Windows](#keeping-the-limit-gauges-alive-recommended-windows) - or run any `claude` command in a terminal to refresh it |
+| The browser cannot connect at all | crabd is not running - the panel is a page crabd serves, so there is nothing to show you a SideCrab error screen | The same two commands as the row above |
+| `crabd: cannot listen on 127.0.0.1:9999 - ...` | Something else holds the port. crabd stops loudly rather than moving to another one, because a crabd on a port nothing addresses is a silent dead panel. The wording is whatever your OS said - `[Errno 48] Address already in use` on macOS, `[WinError 10048] Only one usage of each socket address ...` on Windows | The message continues with the exact command that names the holder - run that, then stop it. `CRABD_PORT` is the other way out, but read the note below first |
 | A finished session still reads "working" | A session was killed by an app restart, so no end hook fired | It clears itself within 15 minutes; taps on it are refused rather than queued |
-| Something else | | `./setup/install.sh --doctor` prints a PASS/FAIL row for every piece |
+| Something else | | The doctor prints a PASS/FAIL row for every piece: `--doctor` on macOS, `Test-SideCrab.ps1` then `Repair-SideCrab.ps1` on Windows |
 
 **About `CRABD_PORT`.** It moves crabd, and nothing else. The seven hook entries the installer
 wrote into `~/.claude/settings.json` carry `127.0.0.1:9999` as a literal, as does the status-line
@@ -583,36 +683,14 @@ crabd beside the live one, which is what it was added for.
 
 ## Known caveats
 
-- **No CPU or GPU temperatures on macOS.** No web page can read a die temperature, and there is
-  no iCUE sensor plugin behind a browser, so the hardware row shows only what the companion can
-  measure: CPU and memory. An absent or all-null block takes the whole row off the glass rather
-  than showing zeros.
-- **macOS notifications appear under Script Editor's identity, carry no buttons, and stack.** They
-  are posted through `osascript`, so macOS attributes them to Script Editor and the per-app
-  notification switch is Script Editor's; the subtitle is always `SideCrab`, which is the only
-  thing on screen naming the product. `display notification` has no action affordance and no
-  replacement identifier, so a second outage notice sits beneath the first instead of replacing
-  it. Acknowledge on the panel. Whether the notification **sound** is audible on your machine was
-  not measured; it is `sound name "default"`. **If you dismissed the one-time permission prompt
-  for Script Editor, alerts are lost silently** - the notifier logs the failure and re-arms, but
-  nothing appears on screen. Turn it back on in System Settings > Notifications > Script Editor,
-  then prove it with `python3 notifier/sidecrab_toast.py --test-toast`. Windows toasts, by
-  contrast, carry Acknowledge and Snooze buttons and replace in place.
-- **App Nap and timer coalescing do not throttle the feed here, measured.** Two minutes of
-  sampling `/v1/state` against the live LaunchAgent gave 55 distinct snapshots, max gap 3.0 s,
-  mean 2.19 s, none over 4 s, against a 2 s rebuild - so the plists carry no `ProcessType` key
-  and the default scheduling stands. The reading was taken with the machine in normal use;
-  battery with the lid shut is where a throttle would show, and that has not been measured.
-  Recorded in [`docs/PORT-NOTES.md`](docs/PORT-NOTES.md).
-- **The glow is Windows-only, and parked.** It is installed only when its `cuesdk` dependency
-  actually imports, and a `SideCrab-glow` task **you** disabled is re-registered and left disabled
-  rather than resurrected - `-ForceEnable` is the only override. On
-  macOS there is no lighting component at all, so `fleet.glow` reads `absent` - the truth rather
-  than a placeholder - and crabd does not spawn anything looking for it.
-- **crabd writes no log file on Windows.** On macOS launchd captures its output to
-  `~/.sidecrab/logs/com.sidecrab.crabd.log`; Task Scheduler has no equivalent, so diagnose it
-  through `/v1/health` and `Repair-SideCrab.ps1` instead. The notifier writes
-  `~/.sidecrab/logs/notifier.log` and the glow writes `~/.sidecrab/glow.log`.
+These apply on both platforms. The platform-specific ones are in
+[macOS details](#macos-details) and [Windows details](#windows-details).
+
+- **No die temperatures in a browser.** No web page can read one, and the iCUE sensor bridge is
+  not there, so on either platform the hardware row shows only what the companion can measure:
+  CPU and memory. An absent or all-null block takes the whole row off the glass rather than
+  showing zeros. The on-glass iCUE build is the only place the two temperature settings do
+  anything.
 - **The status-line feed is a fallback, not a replacement.** It fires only in an interactive
   terminal session. The credential-based limits path works regardless.
 - **Cost figures need telemetry.** `costUSD` appears only when Claude Code's OTLP telemetry is
@@ -650,22 +728,14 @@ report a vulnerability.
 
 ---
 
-## The iCUE widget for the Corsair Xeneon Edge
+## For developers
 
-SideCrab began as an iCUE widget for the Corsair Xeneon Edge, and **that build is still in the
-tree and still packageable** - the panel is the same files. It needs iCUE 5.44 or newer and a
-dashboard-LCD device. With Corsair's WidgetBuilder CLI, from the repo root on Windows:
+Want to contribute? Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first: it is short, and it explains
+the four rules every change is held to.
 
-```powershell
-icuewidget validate widget
-icuewidget package widget
-```
-
-The validator's `icueEvents` warning is a known false positive. The `.icuewidget` it produces is
-gitignored; releases attach it, and importing one is a double-click at the iCUE console - which
-also means `Update-SideCrab.ps1` never updates the widget, only the source it is packaged from. On
-this route the Approval Pairing Code goes into the widget's settings in the iCUE console rather
-than into the panel's own settings sheet.
+This project is a fork of [Dixie-sketch/Clawdeck](https://github.com/Dixie-sketch/Clawdeck), which
+is where the Windows-and-iCUE-only line continues. Everything after the fork point - the macOS
+port, the browser panel and the current widget - is here; see [`CHANGELOG.md`](CHANGELOG.md).
 
 `widget/index.html` stays strict-XML clean and `widget/manifest.json` still carries the widget
 version, both checked in CI, which also still runs its Windows job. The PowerShell installer moved
@@ -673,17 +743,6 @@ with the port rather than standing still: eight of its scripts and the Pester su
 instead of 2722, and the three that POST live - `Repair-SideCrab.ps1`, `Test-SideCrab.ps1` and
 `Verify-PanelApproval.ps1` - also send `X-SideCrab-Panel`, pinned by a source-text test over all
 three.
-
-This project is a fork of [Dixie-sketch/Clawdeck](https://github.com/Dixie-sketch/Clawdeck), which
-is where the Windows-and-iCUE-only line continues. Everything after the fork point - the macOS
-port, the browser panel and the current widget - is here; see [`CHANGELOG.md`](CHANGELOG.md).
-
----
-
-## For developers
-
-Want to contribute? Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first: it is short, and it explains
-the four rules every change is held to.
 
 | Path | What |
 |---|---|
